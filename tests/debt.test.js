@@ -1,30 +1,32 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  annualEffectiveToMonthlyRate,
-  frenchPayment,
-  simulateCompoundDebt,
-  simulateRecurringLoans,
-} from '../lib/debt.js';
+import { annualEffectiveToMonthlyRate, simulateUnpaidDebt } from '../lib/debt.js';
 
 test('convierte una tasa efectiva anual a mensual', () => {
   assert.ok(Math.abs(annualEffectiveToMonthlyRate(100) - 0.05946309435929531) < 1e-12);
 });
 
-test('cuota francesa sin interés es capital dividido plazo', () => {
-  assert.equal(frenchPayment(120000, 0, 12), 10000);
+test('un préstamo único sin interés queda constante', () => {
+  const simulation = simulateUnpaidDebt({ months: 12, amount: 100000, annualEffectivePct: 0, recurring: false });
+  assert.equal(simulation.summary.totalBorrowed, 100000);
+  assert.equal(simulation.summary.finalDebt, 100000);
+  assert.equal(simulation.rows[0].outstandingDebt, 100000);
 });
 
-test('sin interés la deuda compuesta suma el déficit mensual', () => {
-  const simulation = simulateCompoundDebt({ months: 12, monthlyDeficit: 100000, annualEffectivePct: 0 });
-  assert.equal(simulation.summary.outstandingDebt, 1200000);
+test('un préstamo único impago capitaliza cada mes', () => {
+  const simulation = simulateUnpaidDebt({ months: 12, amount: 100000, annualEffectivePct: 100, recurring: false });
+  assert.ok(Math.abs(simulation.summary.finalDebt - 200000) < 0.01);
 });
 
-test('préstamos recurrentes incrementan el nuevo endeudamiento por las cuotas', () => {
-  const simulation = simulateRecurringLoans({ months: 3, monthlyDeficit: 100000, annualEffectivePct: 0, termMonths: 10 });
-  assert.equal(simulation.rows[0].newBorrowing, 100000);
-  assert.equal(simulation.rows[1].debtService, 10000);
-  assert.equal(simulation.rows[1].newBorrowing, 110000);
-  assert.equal(simulation.rows[2].debtService, 21000);
-  assert.equal(simulation.rows[2].newBorrowing, 121000);
+test('un préstamo recurrente sin interés acumula el capital mensual', () => {
+  const simulation = simulateUnpaidDebt({ months: 12, amount: 100000, annualEffectivePct: 0, recurring: true });
+  assert.equal(simulation.summary.totalBorrowed, 1200000);
+  assert.equal(simulation.summary.finalDebt, 1200000);
+});
+
+test('un préstamo recurrente con interés termina por encima del capital recibido', () => {
+  const simulation = simulateUnpaidDebt({ months: 12, amount: 100000, annualEffectivePct: 100, recurring: true });
+  assert.equal(simulation.summary.totalBorrowed, 1200000);
+  assert.ok(simulation.summary.finalDebt > 1200000);
+  assert.ok(simulation.summary.accruedInterest > 0);
 });
