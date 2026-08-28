@@ -6,6 +6,15 @@
   <meta name="description" content="Compará cómo crece una deuda impaga con referencias de mercado y tasas informadas al BCRA.">
   <title>Calcular deudas — Argentina</title>
   <link rel="stylesheet" href="./styles.css">
+  <style>
+    .chart{position:relative}
+    .chart-tooltip{position:absolute;z-index:30;min-width:210px;max-width:min(300px,calc(100% - 24px));padding:11px 12px;border:1px solid var(--border);border-radius:10px;background:color-mix(in srgb,var(--panel) 94%,transparent);box-shadow:0 12px 34px rgba(20,25,22,.18);backdrop-filter:blur(8px);pointer-events:none;font-size:.76rem;line-height:1.35}
+    .chart-tooltip[hidden]{display:none}
+    .chart-tooltip strong{display:block;margin-bottom:7px;font-size:.83rem;line-height:1.25}
+    .chart-tooltip dl{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;margin:0}
+    .chart-tooltip dt{color:var(--muted)}
+    .chart-tooltip dd{margin:0;text-align:right;font-variant-numeric:tabular-nums;font-weight:700}
+  </style>
 </head>
 <body>
   <header class="site-header">
@@ -117,5 +126,106 @@
 
   <footer class="wrap footer">Fuente: Banco Central de la República Argentina — Régimen de Transparencia. Las tasas se actualizan automáticamente mediante GitHub Actions.</footer>
   <script type="module" src="./app.js"></script>
+  <script type="module">
+    import { simulateUnpaidDebt } from './lib/debt.js';
+    import { bestProductPerEntity } from './lib/market.js';
+
+    const chart = document.querySelector('#chart');
+    const money = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 });
+    const percent = new Intl.NumberFormat('es-AR', { maximumFractionDigits: 2 });
+    const tooltip = document.createElement('div');
+    tooltip.className = 'chart-tooltip';
+    tooltip.hidden = true;
+    tooltip.setAttribute('aria-hidden', 'true');
+    chart.appendChild(tooltip);
+
+    let entityMap = new Map();
+    const simulationCache = new Map();
+
+    fetch('./data/rates.json', { cache: 'no-store' })
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error(`HTTP ${response.status}`)))
+      .then((snapshot) => {
+        entityMap = new Map(bestProductPerEntity(snapshot.products ?? []).map((item) => [item.entity, item]));
+      })
+      .catch(() => {});
+
+    function hideTooltip() {
+      tooltip.hidden = true;
+    }
+
+    function currentSimulation(entity) {
+      const entry = entityMap.get(entity);
+      if (!entry) return null;
+      const amount = Math.max(0, Number(document.querySelector('#amount')?.value) || 0);
+      const months = Math.max(1, Number(document.querySelector('#horizonMonths')?.value) || 12);
+      const recurring = document.querySelector('input[name="mode"]:checked')?.value === 'recurring';
+      const key = `${entity}|${amount}|${months}|${recurring}`;
+      if (!simulationCache.has(key)) {
+        simulationCache.set(key, simulateUnpaidDebt({ months, amount, annualEffectivePct: entry.rate, recurring }));
+      }
+      return { entry, simulation: simulationCache.get(key), months };
+    }
+
+    function positionTooltip(event) {
+      const bounds = chart.getBoundingClientRect();
+      const gap = 14;
+      let left = event.clientX - bounds.left + gap;
+      let top = event.clientY - bounds.top + gap;
+      const width = tooltip.offsetWidth;
+      const height = tooltip.offsetHeight;
+      if (left + width > bounds.width - 6) left = event.clientX - bounds.left - width - gap;
+      if (top + height > bounds.height - 6) top = event.clientY - bounds.top - height - gap;
+      tooltip.style.left = `${Math.max(6, left)}px`;
+      tooltip.style.top = `${Math.max(6, top)}px`;
+    }
+
+    chart.addEventListener('pointermove', (event) => {
+      const svg = chart.querySelector('svg');
+      if (!svg) return hideTooltip();
+      const lines = [...svg.querySelectorAll('.entity-line')];
+      const chips = [...document.querySelectorAll('#selectedLegend .entity-chip')];
+      if (!lines.length || lines.length !== chips.length) return hideTooltip();
+
+      const rect = svg.getBoundingClientRect();
+      const viewBox = svg.viewBox.baseVal;
+      const svgX = (event.clientX - rect.left) * viewBox.width / rect.width;
+      const svgY = (event.clientY - rect.top) * viewBox.height / rect.height;
+      const plotLeft = 78;
+      const plotRight = viewBox.width - 34;
+      if (svgX < plotLeft || svgX > plotRight || svgY < 0 || svgY > viewBox.height) return hideTooltip();
+
+      const horizon = Math.max(1, Number(document.querySelector('#horizonMonths')?.value) || 12);
+      const month = Math.max(0, Math.min(horizon, Math.round((svgX - plotLeft) / (plotRight - plotLeft) * horizon)));
+      let nearestIndex = -1;
+      let nearestDistance = Infinity;
+
+      lines.forEach((line, index) => {
+        const point = line.points?.getItem(month);
+        if (!point) return;
+        const distance = Math.abs(point.y - svgY);
+        if (distance < nearestDistance) {
+          nearestDistance = distance;
+          nearestIndex = index;
+        }
+      });
+
+      if (nearestIndex < 0) return hideTooltip();
+      const entity = chips[nearestIndex]?.dataset.entity;
+      const current = currentSimulation(entity);
+      if (!current) return hideTooltip();
+      const row = current.simulation.rows[month];
+      if (!row) return hideTooltip();
+
+      tooltip.innerHTML = `<strong>${entity}</strong><dl>
+        <dt>CFTEA</dt><dd>${percent.format(current.entry.rate)}%</dd>
+        <dt>Número del mes</dt><dd>${month}</dd>
+        <dt>Deuda acumulada</dt><dd>${money.format(row.outstandingDebt)}</dd>
+      </dl>`;
+      tooltip.hidden = false;
+      positionTooltip(event);
+    });
+
+    chart.addEventListener('pointerleave', hideTooltip);
+  </script>
 </body>
 </html>
