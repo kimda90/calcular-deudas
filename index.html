@@ -180,6 +180,7 @@
     }
 
     chart.addEventListener('pointermove', (event) => {
+      if (!tooltip.isConnected) chart.appendChild(tooltip);
       const svg = chart.querySelector('svg');
       if (!svg) return hideTooltip();
       const lines = [...svg.querySelectorAll('.entity-line')];
