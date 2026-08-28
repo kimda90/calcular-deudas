@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Compará cómo crece una deuda impaga con las tasas informadas por entidades financieras al BCRA.">
+  <meta name="description" content="Compará cómo crece una deuda impaga con referencias de mercado y tasas informadas al BCRA.">
   <title>Calcular deudas — Argentina</title>
   <link rel="stylesheet" href="./styles.css">
 </head>
@@ -13,9 +13,12 @@
       <div>
         <p class="eyebrow">Argentina · datos BCRA</p>
         <h1>¿Cuánto crece una deuda si no la pagás?</h1>
-        <p class="lede">Una línea por entidad. Compará un préstamo único contra pedir el mismo monto todos los meses, sin hacer ningún pago.</p>
+        <p class="lede">Usá percentiles del mercado como referencia y agregá sólo las entidades que quieras comparar.</p>
       </div>
-      <div class="freshness" id="freshness" aria-live="polite">Cargando tasas…</div>
+      <div class="header-actions">
+        <div class="freshness" id="freshness" aria-live="polite">Cargando tasas…</div>
+        <a class="text-link" href="./entidades.html">Ver entidades</a>
+      </div>
     </div>
   </header>
 
@@ -59,7 +62,7 @@
           </label>
         </div>
 
-        <p class="assumption">Para comparar entidades usamos, dentro de cada una, el préstamo personal en pesos con la <strong>menor CFTEA publicada</strong> en el snapshot del BCRA.</p>
+        <p class="assumption">La referencia de mercado usa la menor CFTEA en pesos disponible por entidad. P50 es la mediana; P90 indica que 90% de las entidades queda en o debajo de ese nivel de deuda.</p>
         <p class="validation" id="validationMessage" role="alert"></p>
       </form>
     </section>
@@ -78,24 +81,34 @@
       <div class="chart-card">
         <div class="chart-title-row">
           <div>
-            <h3 id="chartTitle">Todas las entidades</h3>
-            <p id="chartSubtitle">La línea punteada representa un salario que no cambia con el tiempo.</p>
+            <h3 id="chartTitle">Referencia de mercado</h3>
+            <p id="chartSubtitle">Rango central, mediana y extremos percentiles del mercado.</p>
           </div>
+          <details class="entity-picker" id="entityPicker">
+            <summary><span>Entidades</span><strong id="selectionSummary">0 seleccionadas</strong></summary>
+            <div class="picker-panel">
+              <label class="picker-search">Buscar entidad
+                <input id="entitySearch" type="search" placeholder="Nación, Galicia, BBVA…">
+              </label>
+              <div class="picker-actions" aria-label="Selección rápida">
+                <button type="button" id="sampleEntities">Muestra</button>
+                <button type="button" id="clearEntities">Ninguna</button>
+                <button type="button" id="allEntities">Todas</button>
+              </div>
+              <div id="entityOptions" class="entity-options" aria-label="Entidades disponibles"></div>
+              <a class="picker-footer" href="./entidades.html">Ver tabla completa de entidades →</a>
+            </div>
+          </details>
         </div>
-        <div id="chart" class="chart" role="img" aria-label="Gráfico comparativo de crecimiento de deuda por entidad"></div>
-      </div>
 
-      <div class="table-card">
-        <div class="table-title-row">
-          <h3>Resultado por entidad</h3>
-          <span id="entityCount" class="muted"></span>
+        <div class="market-legend" aria-label="Referencias del gráfico">
+          <span><i class="band-swatch"></i>P25–P75</span>
+          <span><i class="median-swatch"></i>Mediana P50</span>
+          <span><i class="range-swatch"></i>P10 / P90</span>
+          <span><i class="salary-swatch"></i>Salario</span>
         </div>
-        <div class="table-scroll">
-          <table>
-            <thead><tr><th>Entidad</th><th>CFTEA usada</th><th>Deuda final</th><th>Distancia vs salario</th></tr></thead>
-            <tbody id="comparisonTable"></tbody>
-          </table>
-        </div>
+        <div id="selectedLegend" class="selected-legend" aria-live="polite"></div>
+        <div id="chart" class="chart" role="img" aria-label="Gráfico comparativo de crecimiento de deuda"></div>
       </div>
 
       <p class="disclaimer">Estimación educativa: capitalizamos mensualmente el CFTEA informado y suponemos que no se realiza ningún pago. No representa una oferta contractual ni un cuadro de marcha.</p>
