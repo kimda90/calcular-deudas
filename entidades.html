@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Tabla de entidades y tasas utilizadas por Calcular deudas.">
+  <title>Entidades — Calcular deudas</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <header class="site-header compact-header">
+    <div class="wrap header-inner">
+      <div>
+        <p class="eyebrow">Datos BCRA</p>
+        <h1>Entidades</h1>
+        <p class="lede">La tasa que usa el simulador para cada entidad y el producto del que proviene.</p>
+      </div>
+      <div class="header-actions">
+        <div class="freshness" id="freshness" aria-live="polite">Cargando tasas…</div>
+        <a class="text-link" href="./index.html">← Volver al simulador</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap entities-page">
+    <section class="panel table-page-card">
+      <div class="table-page-toolbar">
+        <div>
+          <p class="eyebrow">Comparación</p>
+          <h2>Una tasa por entidad</h2>
+        </div>
+        <label class="table-search">Buscar
+          <input id="tableSearch" type="search" placeholder="Entidad, producto o beneficiario">
+        </label>
+      </div>
+      <p class="assumption">Para mantener comparable el gráfico principal, se toma el préstamo personal en pesos con la menor CFTEA disponible dentro de cada entidad.</p>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr><th>Entidad</th><th>Producto usado</th><th>Beneficiario</th><th>CFTEA</th><th>TEA</th><th>Plazo máx.</th><th>Fecha</th></tr>
+          </thead>
+          <tbody id="entitiesTable"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+  <script type="module" src="./entities.js"></script>
+</body>
+</html>
