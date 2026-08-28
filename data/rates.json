@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "source": "BCRA — Régimen de Transparencia",
+  "sourceUrl": "https://api.bcra.gob.ar/transparencia/v1.0/Prestamos/Personales",
+  "retrievedAt": null,
+  "productCount": 0,
+  "scope": "El snapshot se completa automáticamente al ejecutar el workflow de actualización.",
+  "products": []
+}

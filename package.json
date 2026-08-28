@@ -1,0 +1,14 @@
+{
+  "name": "calcular-deudas",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "build": "node scripts/build-site.mjs",
+    "rates:update": "node scripts/fetch-rates.mjs --output data/rates.json --history data/history"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

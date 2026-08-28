@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Comparador de tasas BCRA y simulador de deuda recurrente para Argentina.">
+  <title>Calcular deudas — Argentina</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <div>
+        <p class="eyebrow">Argentina · datos BCRA</p>
+        <h1>Calculadora de deuda recurrente</h1>
+        <p class="lede">Simulá qué pasa cuando cada mes aparece un faltante nuevo y necesitás financiarlo otra vez.</p>
+      </div>
+      <div class="freshness" id="freshness" aria-live="polite">Cargando tasas…</div>
+    </div>
+  </header>
+
+  <main class="wrap layout">
+    <section class="panel controls" aria-labelledby="simulador-title">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Simulador</p>
+          <h2 id="simulador-title">Tu escenario</h2>
+        </div>
+        <button class="ghost" id="resetButton" type="button">Restablecer</button>
+      </div>
+
+      <form id="simulationForm">
+        <div class="field-grid">
+          <label>Déficit mensual
+            <span class="input-affix"><span>$</span><input id="monthlyDeficit" inputmode="decimal" type="number" min="0" step="1000" value="100000"></span>
+          </label>
+          <label>Ingreso mensual
+            <span class="input-affix"><span>$</span><input id="monthlyIncome" inputmode="decimal" type="number" min="0" step="1000" value="2000000"></span>
+          </label>
+          <label>Horizonte
+            <select id="horizonMonths">
+              <option value="6">6 meses</option>
+              <option value="12" selected>12 meses</option>
+              <option value="18">18 meses</option>
+              <option value="24">24 meses</option>
+              <option value="36">36 meses</option>
+            </select>
+          </label>
+          <label>Plazo de cada préstamo
+            <select id="termMonths">
+              <option value="6">6 cuotas</option>
+              <option value="12" selected>12 cuotas</option>
+              <option value="18">18 cuotas</option>
+              <option value="24">24 cuotas</option>
+              <option value="36">36 cuotas</option>
+              <option value="48">48 cuotas</option>
+              <option value="60">60 cuotas</option>
+            </select>
+          </label>
+        </div>
+
+        <fieldset class="mode-fieldset">
+          <legend>Modelo</legend>
+          <label class="radio-card"><input type="radio" name="mode" value="recurring" checked><span><strong>Préstamos recurrentes</strong><small>Las cuotas del mes anterior aumentan el faltante del mes siguiente.</small></span></label>
+          <label class="radio-card"><input type="radio" name="mode" value="compound"><span><strong>Deuda compuesta</strong><small>Todo el saldo queda financiado y capitaliza mensualmente.</small></span></label>
+        </fieldset>
+
+        <div class="rate-box">
+          <div class="rate-source-row">
+            <label class="grow">Producto BCRA
+              <select id="productSelect"><option value="manual">Tasa manual</option></select>
+            </label>
+            <label class="manual-rate">CFTEA
+              <span class="input-affix suffix"><input id="manualRate" inputmode="decimal" type="number" min="0" step="0.01" value="100"><span>%</span></span>
+            </label>
+          </div>
+          <div id="productDetails" class="product-details">Podés cargar una tasa manual o elegir un producto del snapshot BCRA.</div>
+        </div>
+
+        <p class="validation" id="validationMessage" role="alert"></p>
+        <button class="primary" type="submit">Calcular escenario</button>
+      </form>
+    </section>
+
+    <section class="results" aria-labelledby="resultado-title">
+      <div class="section-heading result-heading">
+        <div>
+          <p class="eyebrow">Resultado</p>
+          <h2 id="resultado-title">Después de <span id="resultMonths">12</span> meses</h2>
+        </div>
+        <span class="badge" id="resultRate">CFTEA 100%</span>
+      </div>
+
+      <div class="metric-grid" id="metricGrid" aria-live="polite"></div>
+
+      <div class="chart-card">
+        <div class="chart-title-row">
+          <h3>Evolución mensual</h3>
+          <div class="legend"><span><i class="line-a"></i> Deuda</span><span><i class="line-b"></i> Nuevo préstamo</span></div>
+        </div>
+        <div id="chart" class="chart" role="img" aria-label="Gráfico de evolución de deuda"></div>
+      </div>
+
+      <details class="table-details">
+        <summary>Ver detalle mes a mes</summary>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Mes</th><th>Déficit base</th><th>Cuotas</th><th>Nuevo préstamo</th><th>Deuda</th></tr></thead>
+            <tbody id="simulationTable"></tbody>
+          </table>
+        </div>
+      </details>
+      <p class="disclaimer">Estimación educativa. El CFTEA se usa como tasa efectiva anual equivalente para modelar el costo mensual. No reemplaza el cuadro de marcha ni una oferta contractual de la entidad.</p>
+    </section>
+  </main>
+
+  <section class="wrap rates-section" aria-labelledby="tasas-title">
+    <div class="section-heading">
+      <div>
+        <p class="eyebrow">Mercado</p>
+        <h2 id="tasas-title">Préstamos personales informados al BCRA</h2>
+      </div>
+      <label class="search-field">Buscar entidad o producto<input id="rateSearch" type="search" placeholder="Ej. Nación, sueldo, monotributista"></label>
+    </div>
+    <p class="source-note" id="sourceNote"></p>
+    <div class="table-scroll rates-table-wrap">
+      <table class="rates-table">
+        <thead><tr><th>Entidad</th><th>Producto</th><th>Beneficiario</th><th>CFTEA máx.</th><th>TEA máx.</th><th>Plazo máx.</th><th>Fecha</th></tr></thead>
+        <tbody id="ratesTable"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer class="wrap footer">Fuente: Banco Central de la República Argentina — Régimen de Transparencia. El sitio conserva la fecha de descarga del snapshot utilizado.</footer>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

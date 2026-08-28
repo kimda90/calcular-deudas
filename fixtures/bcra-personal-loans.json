@@ -1,0 +1,28 @@
+{
+  "status": 200,
+  "results": [
+    {
+      "montoMinimoOtorgable": 500,
+      "denominacion": "Pesos",
+      "montoMaximoOtorgable": 24800000,
+      "plazoMaximoOtorgable": 72,
+      "ingresoMinimoMensual": 310000,
+      "antiguedadLaboralMinimaMeses": 0,
+      "edadMaximaSolicitada": 80,
+      "relacionCuotaIngreso": 30,
+      "beneficiario": "Todos los beneficiarios",
+      "cargoMaximoCancelacionAnticipada": 4,
+      "tasaEfectivaAnualMaxima": 246.71,
+      "tipoTasa": "Fija",
+      "costoFinancieroEfectivoTotalMaximo": 343.18,
+      "cuotaInicial": 1357,
+      "codigoEntidad": 7,
+      "descripcionEntidad": "BANCO DE GALICIA Y BUENOS AIRES S.A.",
+      "fechaInformacion": "2025-08-19",
+      "nombreCompleto": "PRESTAMOPERSONAL",
+      "nombreCorto": "PP",
+      "territorioValidez": "0",
+      "masInformacion": null
+    }
+  ]
+}
