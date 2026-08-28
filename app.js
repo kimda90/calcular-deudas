@@ -1,12 +1,13 @@
-import { simulateCompoundDebt, simulateRecurringLoans } from './lib/debt.js';
+import { simulateUnpaidDebt } from './lib/debt.js';
 
 const $ = (selector) => document.querySelector(selector);
 const money = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 });
 const pct = new Intl.NumberFormat('es-AR', { maximumFractionDigits: 2 });
+const ratio = new Intl.NumberFormat('es-AR', { maximumFractionDigits: 1 });
 const dateFmt = new Intl.DateTimeFormat('es-AR', { dateStyle: 'medium', timeZone: 'America/Argentina/Buenos_Aires' });
 
-const state = { snapshot: null, products: [], selected: null };
-const defaults = { monthlyDeficit: 100000, monthlyIncome: 2000000, horizonMonths: 12, termMonths: 12, manualRate: 100 };
+const state = { snapshot: null, entities: [] };
+const defaults = { amount: 100000, salary: 2000000, horizonMonths: 12 };
 
 function safeNumber(input, fallback = 0) {
   const value = Number(input.value);
@@ -17,11 +18,16 @@ function rateForProduct(product) {
   return product?.cfteaPct ?? product?.teaPct ?? null;
 }
 
-function eligibleProducts(products) {
-  return products
-    .filter((product) => product.currency?.toLocaleLowerCase('es').includes('peso'))
-    .filter((product) => Number.isFinite(rateForProduct(product)) && rateForProduct(product) >= 0)
-    .sort((a, b) => rateForProduct(a) - rateForProduct(b));
+function bestProductPerEntity(products) {
+  const byEntity = new Map();
+  for (const product of products ?? []) {
+    const rate = rateForProduct(product);
+    if (!product?.entity || !Number.isFinite(rate) || rate < 0) continue;
+    if (product.currency && !product.currency.toLocaleLowerCase('es').includes('peso')) continue;
+    const current = byEntity.get(product.entity);
+    if (!current || rate < current.rate) byEntity.set(product.entity, { entity: product.entity, rate, product });
+  }
+  return [...byEntity.values()].sort((a, b) => a.rate - b.rate || a.entity.localeCompare(b.entity, 'es'));
 }
 
 async function loadRates() {
@@ -29,107 +35,28 @@ async function loadRates() {
     const response = await fetch('./data/rates.json', { cache: 'no-store' });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     state.snapshot = await response.json();
-    state.products = eligibleProducts(state.snapshot.products ?? []);
-    populateProducts();
-    renderRatesTable();
+    state.entities = bestProductPerEntity(state.snapshot.products ?? []);
     renderFreshness();
+    calculate();
   } catch (error) {
     $('#freshness').textContent = 'Sin snapshot BCRA';
-    $('#sourceNote').textContent = `No se pudo cargar el snapshot: ${error.message}. La calculadora manual sigue disponible.`;
-    renderRatesTable();
-  }
-}
-
-function populateProducts() {
-  const select = $('#productSelect');
-  select.replaceChildren(new Option('Tasa manual', 'manual'));
-  for (const product of state.products) {
-    const rate = rateForProduct(product);
-    const label = `${product.entity} — ${product.shortName ?? product.name} — ${pct.format(rate)}%`;
-    select.add(new Option(label, product.id));
+    $('#validationMessage').textContent = `No se pudo cargar el snapshot de tasas: ${error.message}`;
+    state.entities = [];
+    calculate();
   }
 }
 
 function renderFreshness() {
   const retrieved = state.snapshot?.retrievedAt ? new Date(state.snapshot.retrievedAt) : null;
   $('#freshness').textContent = retrieved && !Number.isNaN(retrieved.valueOf())
-    ? `${state.snapshot.productCount} productos · descargado ${dateFmt.format(retrieved)}`
-    : 'Snapshot pendiente de actualización';
-  $('#sourceNote').textContent = state.snapshot?.scope ?? 'Fuente BCRA.';
+    ? `${state.entities.length} entidades · ${dateFmt.format(retrieved)}`
+    : `${state.entities.length} entidades`;
 }
 
-function selectedProduct() {
-  const id = $('#productSelect').value;
-  return id === 'manual' ? null : state.products.find((product) => product.id === id) ?? null;
-}
-
-function currentRate() {
-  const product = selectedProduct();
-  return product ? rateForProduct(product) : safeNumber($('#manualRate'), defaults.manualRate);
-}
-
-function renderProductDetails() {
-  const product = selectedProduct();
-  state.selected = product;
-  const manual = $('#manualRate');
-  manual.disabled = Boolean(product);
-  if (!product) {
-    $('#productDetails').textContent = 'Tasa manual: ingresá un CFTEA para comparar un escenario que no figure en el BCRA.';
-    return;
-  }
-  const details = [
-    `${pct.format(rateForProduct(product))}% CFTEA máx.`,
-    product.teaPct != null ? `${pct.format(product.teaPct)}% TEA máx.` : null,
-    product.maxTermMonths ? `hasta ${product.maxTermMonths} meses` : null,
-    product.beneficiary,
-    product.infoDate ? `informado ${product.infoDate}` : null,
-  ].filter(Boolean);
-  $('#productDetails').textContent = details.join(' · ');
-}
-
-function metric(label, value, warning = false) {
-  return `<div class="metric${warning ? ' warning' : ''}"><strong>${value}</strong><span>${label}</span></div>`;
-}
-
-function renderSummary(simulation, months, rate) {
-  const s = simulation.summary;
-  const metrics = [
-    metric('Deuda pendiente', money.format(s.outstandingDebt)),
-    metric('Capital pedido acumulado', money.format(s.totalBorrowed)),
-    metric('Pagos realizados', money.format(s.totalPayments)),
-    metric('Interés pagado', money.format(s.interestPaid)),
-    metric('Cuotas en el último mes', money.format(s.finalDebtService), s.finalDebtService >= safeNumber($('#monthlyDeficit'))),
-    metric('Nuevo préstamo del último mes', money.format(s.finalNewBorrowing), s.finalNewBorrowing > safeNumber($('#monthlyDeficit'))),
-  ];
-  if (s.debtServiceExceedsBaseMonth) metrics.push(metric('Cuotas ≥ déficit base', `Mes ${s.debtServiceExceedsBaseMonth}`, true));
-  if (s.finalDebtServiceToIncomePct != null) metrics.push(metric('Cuotas / ingreso al final', `${pct.format(s.finalDebtServiceToIncomePct)}%`, s.finalDebtServiceToIncomePct >= 30));
-  $('#metricGrid').innerHTML = metrics.join('');
-  $('#resultMonths').textContent = months;
-  $('#resultRate').textContent = `CFTEA ${pct.format(rate)}%`;
-}
-
-function renderChart(rows) {
-  const width = 760;
-  const height = 300;
-  const pad = { left: 68, right: 18, top: 18, bottom: 38 };
-  const innerW = width - pad.left - pad.right;
-  const innerH = height - pad.top - pad.bottom;
-  const maxY = Math.max(1, ...rows.flatMap((row) => [row.outstandingDebt, row.newBorrowing]));
-  const x = (index) => pad.left + (rows.length === 1 ? innerW / 2 : (index / (rows.length - 1)) * innerW);
-  const y = (value) => pad.top + innerH - (value / maxY) * innerH;
-  const points = (key) => rows.map((row, index) => `${x(index)},${y(row[key])}`).join(' ');
-  const ticks = Array.from({ length: 5 }, (_, i) => (maxY / 4) * i);
-  const grid = ticks.map((tick) => {
-    const yy = y(tick);
-    return `<line class="grid" x1="${pad.left}" y1="${yy}" x2="${width - pad.right}" y2="${yy}"/><text x="${pad.left - 8}" y="${yy + 4}" text-anchor="end">${compactMoney(tick)}</text>`;
-  }).join('');
-  const xLabels = rows.map((row, index) => {
-    if (rows.length > 12 && index % Math.ceil(rows.length / 8) !== 0 && index !== rows.length - 1) return '';
-    return `<text x="${x(index)}" y="${height - 10}" text-anchor="middle">${row.month}</text>`;
-  }).join('');
-
-  $('#chart').innerHTML = `<svg viewBox="0 0 ${width} ${height}" aria-hidden="true">${grid}<polyline class="debt-line" points="${points('outstandingDebt')}"/><polyline class="borrow-line" points="${points('newBorrowing')}"/>${xLabels}</svg>`;
-  $('#chart').setAttribute('aria-label', `La deuda termina en ${money.format(rows.at(-1)?.outstandingDebt ?? 0)} y el último préstamo nuevo en ${money.format(rows.at(-1)?.newBorrowing ?? 0)}.`);
+function colorFor(index, total) {
+  const hue = Math.round((index * 317.5) % 360);
+  const light = total > 20 ? 48 : 44;
+  return `hsl(${hue} 58% ${light}%)`;
 }
 
 function compactMoney(value) {
@@ -140,88 +67,124 @@ function compactMoney(value) {
   return `$${Math.round(value)}`;
 }
 
-function renderSimulationTable(rows) {
-  $('#simulationTable').innerHTML = rows.map((row) => `<tr><td>${row.month}</td><td class="num">${money.format(row.baseDeficit)}</td><td class="num">${money.format(row.debtService ?? 0)}</td><td class="num">${money.format(row.newBorrowing)}</td><td class="num">${money.format(row.outstandingDebt)}</td></tr>`).join('');
+function metric(label, value, detail = '') {
+  return `<div class="metric"><strong>${value}</strong><span>${label}</span>${detail ? `<small>${detail}</small>` : ''}</div>`;
 }
 
-function calculate(event) {
-  event?.preventDefault();
-  const monthlyDeficit = safeNumber($('#monthlyDeficit'), defaults.monthlyDeficit);
-  const monthlyIncome = safeNumber($('#monthlyIncome'), defaults.monthlyIncome);
-  const months = Math.max(1, Number($('#horizonMonths').value));
-  const termMonths = Math.max(1, Number($('#termMonths').value));
-  const annualEffectivePct = currentRate();
-  const mode = document.querySelector('input[name="mode"]:checked')?.value ?? 'recurring';
-  const product = selectedProduct();
-
-  if (!Number.isFinite(annualEffectivePct) || annualEffectivePct < 0) {
-    $('#validationMessage').textContent = 'Ingresá un CFTEA válido.';
-    return;
-  }
-  if (product?.maxTermMonths && termMonths > product.maxTermMonths) {
-    $('#validationMessage').textContent = `El producto informa un plazo máximo de ${product.maxTermMonths} meses. Elegí un plazo menor para esta simulación.`;
-    return;
-  }
-  $('#validationMessage').textContent = '';
-
-  const simulation = mode === 'compound'
-    ? simulateCompoundDebt({ months, monthlyDeficit, annualEffectivePct })
-    : simulateRecurringLoans({ months, monthlyDeficit, monthlyIncome, annualEffectivePct, termMonths });
-
-  renderSummary(simulation, months, annualEffectivePct);
-  renderChart(simulation.rows);
-  renderSimulationTable(simulation.rows);
+function buildSeries({ amount, months, recurring }) {
+  return state.entities.map((entry) => {
+    const simulation = simulateUnpaidDebt({ months, amount, annualEffectivePct: entry.rate, recurring });
+    return { ...entry, simulation, finalDebt: simulation.summary.finalDebt };
+  }).sort((a, b) => a.finalDebt - b.finalDebt);
 }
 
-function renderRatesTable() {
-  const query = ($('#rateSearch')?.value ?? '').trim().toLocaleLowerCase('es');
-  const filtered = state.products.filter((product) => {
-    if (!query) return true;
-    return [product.entity, product.name, product.shortName, product.beneficiary]
-      .filter(Boolean).join(' ').toLocaleLowerCase('es').includes(query);
-  }).slice(0, 100);
-
-  const tbody = $('#ratesTable');
-  if (!filtered.length) {
-    tbody.innerHTML = `<tr><td class="empty-row" colspan="7">${state.products.length ? 'No hay resultados para esa búsqueda.' : 'Todavía no hay tasas en el snapshot. Ejecutá “Update BCRA rates” o esperá al próximo CRON.'}</td></tr>`;
+function renderSummary(series, amount, salary, months, recurring) {
+  if (!series.length) {
+    $('#metricGrid').innerHTML = metric('Sin datos', '—', 'Ejecutá la actualización de tasas para comparar entidades.');
     return;
   }
-  tbody.innerHTML = filtered.map((product) => `<tr>
-    <td>${escapeHtml(product.entity)}</td>
-    <td>${escapeHtml(product.shortName ?? product.name)}</td>
-    <td>${escapeHtml(product.beneficiary ?? '—')}</td>
-    <td class="num"><strong>${pct.format(rateForProduct(product))}%</strong></td>
-    <td class="num">${product.teaPct == null ? '—' : `${pct.format(product.teaPct)}%`}</td>
-    <td class="num">${product.maxTermMonths ?? '—'} meses</td>
-    <td>${escapeHtml(product.infoDate ?? '—')}</td>
-  </tr>`).join('');
+
+  const cheapest = series[0];
+  const mostExpensive = series.at(-1);
+  const capital = recurring ? amount * months : amount;
+  $('#metricGrid').innerHTML = [
+    metric('Capital que recibís', money.format(capital), recurring ? `${money.format(amount)} por mes` : 'una sola vez'),
+    metric('Menor deuda final', money.format(cheapest.finalDebt), `${cheapest.entity} · ${pct.format(cheapest.rate)}% CFTEA`),
+    metric('Mayor deuda final', money.format(mostExpensive.finalDebt), `${mostExpensive.entity} · ${pct.format(mostExpensive.rate)}% CFTEA`),
+  ].join('');
+
+  $('#salaryBadge').textContent = `Salario ${money.format(salary)}`;
+}
+
+function renderChart(series, salary, months) {
+  const chart = $('#chart');
+  if (!series.length) {
+    chart.innerHTML = '<div class="empty-state">Todavía no hay entidades para graficar.</div>';
+    return;
+  }
+
+  const width = 920;
+  const height = 430;
+  const pad = { left: 78, right: 24, top: 24, bottom: 48 };
+  const innerW = width - pad.left - pad.right;
+  const innerH = height - pad.top - pad.bottom;
+  const maxDebt = Math.max(...series.map((item) => item.finalDebt), salary, 1);
+  const maxY = maxDebt * 1.08;
+  const x = (month) => pad.left + (month / months) * innerW;
+  const y = (value) => pad.top + innerH - (value / maxY) * innerH;
+  const ticks = Array.from({ length: 6 }, (_, i) => (maxY / 5) * i);
+
+  const grid = ticks.map((tick) => {
+    const yy = y(tick);
+    return `<line class="grid" x1="${pad.left}" y1="${yy}" x2="${width - pad.right}" y2="${yy}"/><text x="${pad.left - 10}" y="${yy + 4}" text-anchor="end">${compactMoney(tick)}</text>`;
+  }).join('');
+
+  const xLabels = Array.from({ length: months + 1 }, (_, month) => {
+    const step = months > 18 ? 6 : months > 12 ? 3 : 2;
+    if (month !== 0 && month !== months && month % step !== 0) return '';
+    return `<text x="${x(month)}" y="${height - 16}" text-anchor="middle">${month}</text>`;
+  }).join('');
+
+  const salaryY = y(salary);
+  const salaryLine = `<line class="salary-line" x1="${pad.left}" y1="${salaryY}" x2="${width - pad.right}" y2="${salaryY}"/><text class="salary-label" x="${width - pad.right}" y="${Math.max(14, salaryY - 7)}" text-anchor="end">Salario ${compactMoney(salary)}</text>`;
+
+  const lines = series.map((item, index) => {
+    const points = item.simulation.rows.map((row) => `${x(row.month)},${y(row.outstandingDebt)}`).join(' ');
+    const color = colorFor(index, series.length);
+    return `<polyline class="entity-line" style="--line-color:${color}" points="${points}" tabindex="0"><title>${escapeHtml(item.entity)} · CFTEA ${pct.format(item.rate)}% · ${money.format(item.finalDebt)}</title></polyline>`;
+  }).join('');
+
+  chart.innerHTML = `<svg viewBox="0 0 ${width} ${height}" aria-hidden="true">${grid}${salaryLine}${lines}${xLabels}</svg>`;
+  const cheapest = series[0];
+  const mostExpensive = series.at(-1);
+  chart.setAttribute('aria-label', `Comparación de ${series.length} entidades. La deuda final va de ${money.format(cheapest.finalDebt)} a ${money.format(mostExpensive.finalDebt)}. El salario de referencia es ${money.format(salary)}.`);
+}
+
+function renderTable(series, salary) {
+  $('#entityCount').textContent = `${series.length} entidades`;
+  const tbody = $('#comparisonTable');
+  if (!series.length) {
+    tbody.innerHTML = '<tr><td colspan="4" class="empty-row">Sin tasas disponibles.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = series.map((item, index) => {
+    const salaryMultiple = salary > 0 ? item.finalDebt / salary : null;
+    const color = colorFor(index, series.length);
+    return `<tr>
+      <td><span class="entity-name"><i style="background:${color}"></i>${escapeHtml(item.entity)}</span><small>${escapeHtml(item.product.shortName ?? item.product.name ?? '')}</small></td>
+      <td class="num">${pct.format(item.rate)}%</td>
+      <td class="num"><strong>${money.format(item.finalDebt)}</strong></td>
+      <td class="num">${salaryMultiple == null ? '—' : `${ratio.format(salaryMultiple)}× salario`}</td>
+    </tr>`;
+  }).join('');
 }
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char]);
 }
 
-function reset() {
-  $('#monthlyDeficit').value = defaults.monthlyDeficit;
-  $('#monthlyIncome').value = defaults.monthlyIncome;
-  $('#horizonMonths').value = defaults.horizonMonths;
-  $('#termMonths').value = defaults.termMonths;
-  $('#manualRate').value = defaults.manualRate;
-  $('#productSelect').value = 'manual';
-  document.querySelector('input[name="mode"][value="recurring"]').checked = true;
-  renderProductDetails();
-  calculate();
+function calculate(event) {
+  event?.preventDefault();
+  const amount = safeNumber($('#amount'), defaults.amount);
+  const salary = safeNumber($('#salary'), defaults.salary);
+  const months = Math.max(1, Number($('#horizonMonths').value));
+  const recurring = document.querySelector('input[name="mode"]:checked')?.value === 'recurring';
+
+  $('#validationMessage').textContent = amount <= 0 ? 'Ingresá un monto mayor a cero.' : '';
+  $('#resultMonths').textContent = months;
+  $('#chartTitle').textContent = recurring ? `Pedir ${money.format(amount)} todos los meses` : `Pedir ${money.format(amount)} una sola vez`;
+  $('#chartSubtitle').textContent = `No se paga nada durante ${months} meses. La línea punteada muestra un salario fijo de ${money.format(salary)}.`;
+
+  const series = amount > 0 ? buildSeries({ amount, months, recurring }) : [];
+  renderSummary(series, amount, salary, months, recurring);
+  renderChart(series, salary, months);
+  renderTable(series, salary);
 }
 
 $('#simulationForm').addEventListener('submit', calculate);
-$('#productSelect').addEventListener('change', () => { renderProductDetails(); calculate(); });
-$('#rateSearch').addEventListener('input', renderRatesTable);
-$('#resetButton').addEventListener('click', reset);
-for (const control of ['#monthlyDeficit', '#monthlyIncome', '#horizonMonths', '#termMonths', '#manualRate']) {
-  $(control).addEventListener('change', calculate);
-}
+for (const control of ['#amount', '#salary', '#horizonMonths']) $(control).addEventListener('input', calculate);
 for (const radio of document.querySelectorAll('input[name="mode"]')) radio.addEventListener('change', calculate);
 
 await loadRates();
-renderProductDetails();
 calculate();
