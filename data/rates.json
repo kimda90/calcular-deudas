@@ -2,7 +2,7 @@
   "version": 2,
   "source": "BCRA — Régimen de Transparencia",
   "sourceUrl": "https://api.bcra.gob.ar/transparencia/v1.0/Prestamos/Personales",
-  "retrievedAt": "2026-11-15T02:00:35.327Z",
+  "retrievedAt": "2026-11-16T02:17:03.689Z",
   "rawProductCount": 2469,
   "productCount": 574,
   "scope": "Préstamos personales del BCRA deduplicados por entidad, tipo normalizado, beneficiario, moneda y tipo de tasa. Dentro de cada grupo se conserva la menor CFTEA disponible.",
